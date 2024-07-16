@@ -204,28 +204,25 @@ M.ROWS_INDENT_RETCODE = {
 ---@param mod BaseMod
 ---@param begRow? number
 ---@param endRow? number
+---@param win? number
 ---@param opts? {use_treesitter: boolean, virt_indent: boolean}
 ---@return ROWS_INDENT_RETCODE enum
 ---@return table<number, number>
-function M.get_rows_indent(mod, begRow, endRow, opts)
-    begRow = begRow or fn.line("w0")
-    endRow = endRow or fn.line("w$")
-    opts = opts or { use_treesitter = false, virt_indent = false }
-
-    local rows_indent = {}
-    local get_indent = fn.indent
-    if opts.use_treesitter then
-        local ts_indent_status, ts_indent = pcall(require, "nvim-treesitter.indent")
-        if not ts_indent_status then
-            return M.ROWS_INDENT_RETCODE.NO_TS, {}
-        end
-        get_indent = function(row)
-            return ts_indent.get_indent(row) or 0
-        end
+function M.get_rows_indent(mod, begRow, endRow, opts, win)
+    win = win or vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) or vim.api.nvim_get_current_buf()
+    if vim.bo[buf].filetype == "trouble" then
+        return M.ROWS_INDENT_RETCODE.NO_TS, {}
     end
+    begRow = begRow or fn.line("w0", win)
+    endRow = endRow or fn.line("w$", win)
+    opts = opts or { use_treesitter = false, virt_indent = false }
+    local rows_indent = {}
 
     for i = endRow, begRow, -1 do
-        rows_indent[i] = get_indent(i)
+        rows_indent[i] = vim.api.nvim_buf_call(buf, function()
+            return fn.indent(i)
+        end)
         -- if use treesitter, no need to care virt_indent option, becasue it has handled by treesitter
         if (not opts.use_treesitter) and rows_indent[i] == 0 and #fn.getline(i) == 0 then
             rows_indent[i] = opts.virt_indent and get_virt_indent(rows_indent, i) or -1

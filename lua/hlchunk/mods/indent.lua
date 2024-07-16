@@ -29,21 +29,47 @@ local indent_mod = BaseMod:new({
     },
 })
 
-function indent_mod:render_line(index, indent)
+function _G.clear_context_indent()
+    local success, render = pcall(require, "treesitter-context.render")
+    if success then
+        local win = vim.api.nvim_get_current_win()
+        for stored_winid, window_context in pairs(render.get_window_contexts()) do
+            if stored_winid == win then
+                self:clear(nil, nil, vim.api.nvim_win_get_buf(window_context.context_winid))
+            end
+        end
+    end
+end
+
+function indent_mod:render_line(index, indent, win, mini)
     local row_opts = {
         virt_text_pos = "overlay",
+        virt_text_hide = true,
         hl_mode = "combine",
         priority = 12,
     }
-    local shiftwidth = fn.shiftwidth()
+    if not vim.api.nvim_win_is_valid(win) then
+        return
+    end
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.b[buf].hl_disable then
+        return
+    end
+    local shiftwidth = vim.api.nvim_buf_call(buf, fn.shiftwidth)
     local render_char_num = math.floor(indent / shiftwidth)
-    local win_info = fn.winsaveview()
+    local win_info = nil
+    if vim.api.nvim_win_is_valid(win) then
+        win_info = vim.api.nvim_win_call(win, function()
+            return fn.winsaveview()
+        end)
+    else
+        win_info = fn.winsaveview()
+    end
     local text = ""
     for _ = 1, render_char_num do
         text = text .. "|" .. (" "):rep(shiftwidth - 1)
     end
     text = text:sub(win_info.leftcol + 1)
-
     local count = 0
     for i = 1, #text do
         local c = text:at(i)
@@ -55,29 +81,65 @@ function indent_mod:render_line(index, indent)
             local style = "HLIndent" .. tostring((count - 1) % Indent_style_num + 1)
             row_opts.virt_text = { { char, style } }
             row_opts.virt_text_win_col = i - 1
-            if row_opts.virt_text_win_col < 0 or row_opts.virt_text_win_col >= fn.indent(index) then
+            if
+                row_opts.virt_text_win_col < 0
+                or row_opts.virt_text_win_col
+                    >= vim.api.nvim_buf_call(buf, function()
+                        return fn.indent(index)
+                    end)
+            then
                 -- if the len of the line is 0, so we should render the indent by its context
-                if api.nvim_buf_get_lines(0, index - 1, index, false)[1] ~= "" then
+                if api.nvim_buf_get_lines(buf, index - 1, index, false)[1] ~= "" then
                     return
                 end
             end
-            api.nvim_buf_set_extmark(0, self.ns_id, index - 1, 0, row_opts)
+            if win ~= vim.api.nvim_get_current_win() and mini then
+                local n = vim.api.nvim_create_namespace("MiniIndentscope")
+                local ext_marks = api.nvim_buf_get_extmarks(0, n, 0, -1, { details = true })
+                if ext_marks ~= nil and #ext_marks ~= 0 then
+                    local _, _, _, info = unpack(ext_marks[1])
+                    local mini_wincol = info.virt_text_win_col
+                    if i - 1 == mini_wincol then
+                        row_opts.virt_text[1][2] = "MiniIndentscopeSymbol"
+                    end
+                end
+            end
+            api.nvim_buf_set_extmark(buf, self.ns_id, index - 1, 0, row_opts)
         end
     end
 end
+vim.keymap.set("n", "<leader>6", function()
+    indent_update()
+end)
 
-function indent_mod:render()
-    if (not self.options.enable) or self.options.exclude_filetypes[vim.bo.filetype] or fn.shiftwidth() == 0 then
+local last_rows_indent = {}
+function indent_mod:render(winid, mini, force)
+    local tabnum = vim.fn.tabpagenr()
+    if tabnum ~= 1 then
+        self:clear()
         return
     end
 
-    self:clear()
-    self.ns_id = api.nvim_create_namespace(self.name)
-
+    force = force or true
+    winid = winid or vim.api.nvim_get_current_win()
+    if not vim.api.nvim_win_is_valid(winid) then
+        return
+    end
+    local buf = vim.api.nvim_win_get_buf(winid)
+    if vim.b[buf].gitsigns_preview == true then
+        return
+    end
+    if (not self.options.enable) or self.options.exclude_filetypes[vim.bo[buf].filetype] then
+        return
+    end
     local retcode, rows_indent = utils.get_rows_indent(self, nil, nil, {
         use_treesitter = self.options.use_treesitter,
         virt_indent = true,
-    })
+    }, winid)
+    if not force and vim.deep_equal(last_rows_indent, rows_indent) then
+        return
+    end
+    self.ns_id = api.nvim_create_namespace(self.name)
     if retcode == ROWS_INDENT_RETCODE.NO_TS then
         if self.options.notify then
             self:notify("[hlchunk.indent]: no parser for " .. vim.bo.filetype, nil, { once = true })
@@ -85,28 +147,112 @@ function indent_mod:render()
         return
     end
 
+    if api.nvim_win_is_valid(winid) then
+        self:clear(nil, nil, vim.api.nvim_win_get_buf(winid))
+    else
+        self:clear()
+    end
     for index, _ in pairs(rows_indent) do
-        self:render_line(index, rows_indent[index])
+        self:render_line(index, rows_indent[index], winid, mini)
+    end
+    last_rows_indent = rows_indent
+end
+
+--- @generic F: function
+--- @param f F
+--- @param ms? number
+--- @return F
+local function throttle(f, ms)
+    ms = ms or 20
+    local timer = assert(vim.loop.new_timer())
+    local waiting = 0
+    return function()
+        if timer:is_active() then
+            waiting = waiting + 1
+            return
+        end
+        waiting = 0
+        f() -- first call, execute immediately
+        timer:start(ms, 0, function()
+            if waiting > 1 then
+                vim.schedule(f) -- only execute if there are calls waiting
+            end
+        end)
+    end
+end
+
+local update = throttle(function()
+    indent_mod:render()
+end)
+local update_slow = throttle(function()
+    -- local time = vim.uv.hrtime()
+    indent_mod:render()
+    -- Time(time, "slow: ")
+end, 100)
+
+_G.indent_update = function(winid)
+    winid = winid or vim.api.nvim_get_current_win()
+    vim.schedule(function()
+        indent_mod:render(winid, nil, true)
+    end)
+end
+
+function _G.update_indent(mini, winid)
+    if winid ~= nil then
+        indent_mod:render(winid, nil, true)
+    end
+    local success, render = pcall(require, "treesitter-context.render")
+    if success then
+        winid = winid or vim.api.nvim_get_current_win()
+        for stored_winid, window_context in pairs(render.get_window_contexts()) do
+            if stored_winid == winid then
+                indent_mod:render(window_context.context_winid, mini, true)
+            end
+        end
     end
 end
 
 function indent_mod:enable_mod_autocmd()
     BaseMod.enable_mod_autocmd(self)
 
-    api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "BufWinEnter", "WinScrolled" }, {
+    api.nvim_create_autocmd({ "BufWinEnter", "WinScrolled", "TextChanged" }, {
         group = self.augroup_name,
         pattern = "*",
         callback = function()
-            indent_mod:render()
+            vim.defer_fn(function()
+                indent_mod:render()
+            end, 50)
         end,
     })
-    api.nvim_create_autocmd({ "OptionSet" }, {
+
+    api.nvim_create_autocmd({ "CursorMoved" }, {
         group = self.augroup_name,
-        pattern = "list,listchars,shiftwidth,tabstop,expandtab",
+        pattern = "*",
         callback = function()
-            indent_mod:render()
+            vim.schedule(function()
+                indent_mod:render(nil, nil, false)
+            end)
         end,
     })
+    api.nvim_create_autocmd({ "TextChangedI" }, {
+        group = self.augroup_name,
+        pattern = "*",
+        callback = function()
+            if vim.g.type_o then
+                return
+            end
+            vim.schedule(update_slow)
+        end,
+    })
+    -- api.nvim_create_autocmd({ "OptionSet" }, {
+    --     group = self.augroup_name,
+    --     pattern = "list,listchars,shiftwidth,tabstop,expandtab",
+    --     callback = function()
+    --         vim.defer_fn(function()
+    --             indent_mod:render()
+    --         end, 100)
+    --     end,
+    -- })
 end
 
 function indent_mod:disable()

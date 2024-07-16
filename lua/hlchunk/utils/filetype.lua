@@ -22,6 +22,7 @@ M.support_filetypes = {
 }
 
 M.exclude_filetypes = {
+    oil_preview = true,
     aerial = true,
     dashboard = true,
     help = true,
@@ -36,14 +37,17 @@ M.exclude_filetypes = {
     plugin = true,
     lazy = true,
     TelescopePrompt = true,
-    [""] = true, -- because TelescopePrompt will set a empty ft, so add this.
+    -- [""] = true, -- because TelescopePrompt will set a empty ft, so add this.
     alpha = true,
     toggleterm = true,
     sagafinder = true,
     sagaoutline = true,
     better_term = true,
     fugitiveblame = true,
+    git = true,
     Trouble = true,
+    Glance = true,
+    trouble = true,
     qf = true,
     Outline = true,
     starter = true,

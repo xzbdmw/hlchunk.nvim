@@ -63,6 +63,7 @@ function BaseMod:enable()
         self:render()
         self:enable_mod_autocmd()
         self:create_mod_usercmd()
+        _G.update_indent(true)
     end)
     if not ok then
         self:notify(tostring(info))
@@ -87,12 +88,12 @@ function BaseMod:render()
     self:notify("not implemented render " .. self.name, vim.log.levels.ERROR)
 end
 
-function BaseMod:clear(line_start, line_end)
+function BaseMod:clear(line_start, line_end, bufnr)
     line_start = line_start or 0
     line_end = line_end or -1
-
+    bufnr = bufnr or 0
     if self.ns_id ~= -1 then
-        api.nvim_buf_clear_namespace(0, self.ns_id, line_start, line_end)
+        api.nvim_buf_clear_namespace(bufnr, self.ns_id, line_start, line_end)
     end
 end
 
@@ -110,7 +111,7 @@ function BaseMod:enable_mod_autocmd()
 end
 
 function BaseMod:disable_mod_autocmd()
-    api.nvim_del_augroup_by_name(self.augroup_name)
+    pcall(api.nvim_del_augroup_by_name, self.augroup_name)
 end
 
 function BaseMod:create_mod_usercmd()
