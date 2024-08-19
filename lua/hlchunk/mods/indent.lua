@@ -40,8 +40,11 @@ function _G.clear_context_indent()
         end
     end
 end
-
+_G.forbid_lines = {}
 function indent_mod:render_line(index, indent, win, mini)
+    if vim.list_contains(forbid_lines, index) then
+        return
+    end
     local row_opts = {
         virt_text_pos = "overlay",
         virt_text_hide = true,
@@ -113,6 +116,7 @@ vim.keymap.set("n", "<leader>6", function()
 end)
 
 local last_rows_indent = {}
+
 function indent_mod:render(winid, mini, force)
     local tabnum = vim.fn.tabpagenr()
     if tabnum ~= 1 then
@@ -195,6 +199,10 @@ _G.indent_update = function(winid)
     vim.schedule(function()
         indent_mod:render(winid, nil, true)
     end)
+end
+
+_G.hlchunk_clear = function(s, e)
+    indent_mod:clear(s, e, 0)
 end
 
 function _G.update_indent(mini, winid)
