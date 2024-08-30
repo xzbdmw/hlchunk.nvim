@@ -40,9 +40,40 @@ function _G.clear_context_indent()
         end
     end
 end
-_G.forbid_lines = {}
+
+local function line_has_namespace(buf, line, name_space, type)
+    buf = buf or 0
+    local ns = api.nvim_create_namespace(name_space)
+    local extmarks = api.nvim_buf_get_extmarks(
+        buf,
+        ns,
+        { line - 1, 0 },
+        { line - 1, -1 },
+        { limit = 1, details = true, type = type }
+    )
+    for _, extmark in ipairs(extmarks) do
+        if extmark[4].hl_group == "GitSignsDeleteLn" then
+            return false
+        end
+    end
+    return extmarks ~= nil and #extmarks ~= 0
+end
+
 function indent_mod:render_line(index, indent, win, mini)
-    if vim.list_contains(forbid_lines, index) then
+    if not vim.api.nvim_win_is_valid(win) then
+        return
+    end
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.b[buf].hl_disable then
+        return
+    end
+    if
+        line_has_namespace(buf, index, "gitsigns_signs_", "highlight")
+        or line_has_namespace(buf, index, "gitsigns_signs_staged", "highlight")
+        or line_has_namespace(buf, index, "visual_range", "sign")
+        or line_has_namespace(buf, index, "symbol_highlight", nil)
+        or line_has_namespace(buf, index, "gitsigns_preview_inline", "highlight")
+    then
         return
     end
     local row_opts = {
@@ -51,13 +82,6 @@ function indent_mod:render_line(index, indent, win, mini)
         hl_mode = "combine",
         priority = 12,
     }
-    if not vim.api.nvim_win_is_valid(win) then
-        return
-    end
-    local buf = vim.api.nvim_win_get_buf(win)
-    if vim.b[buf].hl_disable then
-        return
-    end
     local shiftwidth = vim.api.nvim_buf_call(buf, fn.shiftwidth)
     local render_char_num = math.floor(indent / shiftwidth)
     local win_info = nil
@@ -107,17 +131,18 @@ function indent_mod:render_line(index, indent, win, mini)
                     end
                 end
             end
+            row_opts.virt_text_hide = true
             api.nvim_buf_set_extmark(buf, self.ns_id, index - 1, 0, row_opts)
         end
     end
 end
-vim.keymap.set("n", "<leader>6", function()
-    indent_update()
-end)
 
 local last_rows_indent = {}
 
 function indent_mod:render(winid, mini, force)
+    if vim.g.hlchunk_disable then
+        return
+    end
     local tabnum = vim.fn.tabpagenr()
     if tabnum ~= 1 then
         self:clear()
@@ -201,10 +226,11 @@ _G.indent_update = function(winid)
     end)
 end
 
-_G.hlchunk_clear = function(s, e)
-    indent_mod:clear(s, e, 0)
+_G.hlchunk_clear = function(s, e, buf)
+    indent_mod:clear(s, e, buf or 0)
 end
 
+-- update treesitter-context's window's hlchunk and fake mini.indentscope
 function _G.update_indent(mini, winid)
     if winid ~= nil then
         indent_mod:render(winid, nil, true)
@@ -242,6 +268,7 @@ function indent_mod:enable_mod_autocmd()
             end)
         end,
     })
+
     api.nvim_create_autocmd({ "TextChangedI" }, {
         group = self.augroup_name,
         pattern = "*",
