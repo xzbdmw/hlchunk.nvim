@@ -249,13 +249,21 @@ end
 function indent_mod:enable_mod_autocmd()
     BaseMod.enable_mod_autocmd(self)
 
-    api.nvim_create_autocmd({ "BufWinEnter", "WinScrolled", "TextChanged" }, {
+    api.nvim_create_autocmd({ "BufWinEnter", "WinScrolled" }, {
         group = self.augroup_name,
         pattern = "*",
         callback = function()
             vim.defer_fn(function()
                 indent_mod:render()
             end, 50)
+        end,
+    })
+
+    api.nvim_create_autocmd({ "TextChanged" }, {
+        group = self.augroup_name,
+        pattern = "*",
+        callback = function()
+            indent_mod:render()
         end,
     })
 
