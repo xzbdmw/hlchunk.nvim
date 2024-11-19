@@ -71,6 +71,7 @@ function indent_mod:render_line(index, indent, win, mini)
         line_has_namespace(buf, index, "gitsigns_signs_", "highlight")
         or line_has_namespace(buf, index, "gitsigns_signs_staged", "highlight")
         or line_has_namespace(buf, index, "visual_range", "sign")
+        or line_has_namespace(buf, index, "mini-operator", "sign")
         or line_has_namespace(buf, index, "symbol_highlight", nil)
         or line_has_namespace(buf, index, "gitsigns_preview_inline", "highlight")
     then
