@@ -59,6 +59,11 @@ local function line_has_namespace(buf, line, name_space, type)
     return extmarks ~= nil and #extmarks ~= 0
 end
 
+local function AAA(buf)
+    local shiftwidth = vim.api.nvim_buf_call(buf, fn.shiftwidth)
+    return shiftwidth
+end
+
 function indent_mod:render_line(index, indent, win, mini)
     if not vim.api.nvim_win_is_valid(win) then
         return
@@ -85,7 +90,7 @@ function indent_mod:render_line(index, indent, win, mini)
         hl_mode = "combine",
         priority = 12,
     }
-    local shiftwidth = vim.api.nvim_buf_call(buf, fn.shiftwidth)
+    local shiftwidth = AAA(buf)
     local render_char_num = math.floor(indent / shiftwidth)
     local win_info = nil
     if vim.api.nvim_win_is_valid(win) then

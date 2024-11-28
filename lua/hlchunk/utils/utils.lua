@@ -218,11 +218,11 @@ function M.get_rows_indent(mod, begRow, endRow, opts, win)
     endRow = endRow or fn.line("w$", win)
     opts = opts or { use_treesitter = false, virt_indent = false }
     local rows_indent = {}
-
     for i = endRow, begRow, -1 do
-        rows_indent[i] = vim.api.nvim_buf_call(buf, function()
-            return fn.indent(i)
-        end)
+        -- rows_indent[i] = vim.api.nvim_buf_call(buf, function()
+        --     return fn.indent(i)
+        -- end)
+        rows_indent[i] = require("hlchunk.utils.cFunc").get_indent(buf, i - 1)
         -- if use treesitter, no need to care virt_indent option, becasue it has handled by treesitter
         if (not opts.use_treesitter) and rows_indent[i] == 0 and #fn.getline(i) == 0 then
             rows_indent[i] = opts.virt_indent and get_virt_indent(rows_indent, i) or -1
