@@ -75,10 +75,10 @@ function indent_mod:render_line(index, indent, win, mini)
     if
         line_has_namespace(buf, index, "gitsigns_signs_", "highlight")
         or line_has_namespace(buf, index, "gitsigns_signs_staged", "highlight")
-        or line_has_namespace(buf, index, "visual_range", "sign")
-        or line_has_namespace(buf, index, "keeped_range", "sign")
-        or line_has_namespace(buf, index, "reference_range", "sign")
-        or line_has_namespace(buf, index, "mini-operator", "sign")
+        or line_has_namespace(buf, index, "visual_range", "virt_text")
+        or line_has_namespace(buf, index, "on_yank_visual", "sign")
+        or line_has_namespace(buf, index, "keeped_range", "virt_text")
+        or line_has_namespace(buf, index, "reference_range", "virt_text")
         or line_has_namespace(buf, index, "symbol_highlight", nil)
         or line_has_namespace(buf, index, "gitsigns_preview_inline", "highlight")
     then
@@ -147,7 +147,24 @@ end
 
 local last_rows_indent = {}
 
+local function get_view()
+    local info = vim.fn.winsaveview()
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    return {
+        info = info.topline,
+        tick = vim.b.changedtick,
+        cursor = cursor,
+        buf = vim.api.nvim_get_current_buf(),
+        win = vim.api.nvim_get_current_win(),
+    }
+end
+
+local last = {}
 function indent_mod:render(winid, mini, force)
+    local view = get_view()
+    if vim.deep_equal(last, view) then
+        -- return
+    end
     if vim.g.hlchunk_disable then
         return
     end
@@ -192,6 +209,7 @@ function indent_mod:render(winid, mini, force)
     for index, _ in pairs(rows_indent) do
         self:render_line(index, rows_indent[index], winid, mini)
     end
+    last = view
     last_rows_indent = rows_indent
 end
 
